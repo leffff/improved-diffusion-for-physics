@@ -192,7 +192,7 @@ class ResBlock(TimestepBlock):
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
-            h = h + emb_out
+            h = h + emb_out.permute(0, 2, 1)
             h = self.out_layers(h)
         return self.skip_connection(x) + h
 
@@ -309,7 +309,7 @@ class UNetModel(nn.Module):
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=2,
-        num_classes=None,
+        condition_dims=1,
         use_checkpoint=False,
         num_heads=1,
         num_heads_upsample=-1,
@@ -328,7 +328,7 @@ class UNetModel(nn.Module):
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
-        self.num_classes = num_classes
+        self.condition_dims = condition_dims
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
@@ -340,8 +340,8 @@ class UNetModel(nn.Module):
             linear(time_embed_dim, time_embed_dim),
         )
 
-        if self.num_classes is not None:
-            self.label_emb = nn.Embedding(num_classes, time_embed_dim)
+        if self.condition_dims is not None:
+            self.label_emb = nn.Linear(self.condition_dims, time_embed_dim)
 
         self.input_blocks = nn.ModuleList(
             [
@@ -468,27 +468,33 @@ class UNetModel(nn.Module):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+
+        x = x.permute(0, 2, 1)
+
         assert (y is not None) == (
-            self.num_classes is not None
+            self.condition_dims is not None
         ), "must specify y if and only if the model is class-conditional"
 
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-
-        if self.num_classes is not None:
-            assert y.shape == (x.shape[0],)
-            emb = emb + self.label_emb(y)
+        if self.condition_dims is not None:
+            y_emb = self.label_emb(y).unsqueeze(dim=1)
+            emb = emb + y_emb
 
         h = x.type(self.inner_dtype)
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
+
         h = self.middle_block(h, emb)
+
         for module in self.output_blocks:
             cat_in = th.cat([h, hs.pop()], dim=1)
             h = module(cat_in, emb)
+
         h = h.type(x.dtype)
-        return self.out(h)
+        return self.out(h).permute(0, 2, 1)
+
 
     def get_feature_vectors(self, x, timesteps, y=None):
         """
@@ -505,7 +511,7 @@ class UNetModel(nn.Module):
         """
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-        if self.num_classes is not None:
+        if self.condition_dims is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
         result = dict(down=[], up=[])
@@ -521,27 +527,3 @@ class UNetModel(nn.Module):
             h = module(cat_in, emb)
             result["up"].append(h.type(x.dtype))
         return result
-
-
-class SuperResModel(UNetModel):
-    """
-    A UNetModel that performs super-resolution.
-
-    Expects an extra kwarg `low_res` to condition on a low-resolution image.
-    """
-
-    def __init__(self, in_channels, *args, **kwargs):
-        super().__init__(in_channels * 2, *args, **kwargs)
-
-    def forward(self, x, timesteps, low_res=None, **kwargs):
-        _, _, new_height, new_width = x.shape
-        upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
-        x = th.cat([x, upsampled], dim=1)
-        return super().forward(x, timesteps, **kwargs)
-
-    def get_feature_vectors(self, x, timesteps, low_res=None, **kwargs):
-        _, new_height, new_width, _ = x.shape
-        upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
-        x = th.cat([x, upsampled], dim=1)
-        return super().get_feature_vectors(x, timesteps, **kwargs)
-
