@@ -6,7 +6,7 @@ import math
 
 import torch as th
 import torch.nn as nn
-
+import schnetpack as spk
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
 class SiLU(nn.Module):
@@ -137,6 +137,10 @@ def checkpoint(func, inputs, params, flag):
         return CheckpointFunction.apply(func, len(inputs), *args)
     else:
         return func(*inputs)
+
+def gaussian_rbf(energy, n_rbf, cutoff = 5.):
+  radial_basis = spk.nn.GaussianRBF(n_rbf=20, cutoff=cutoff)
+  return radial_basis(energy)
 
 
 class CheckpointFunction(th.autograd.Function):
