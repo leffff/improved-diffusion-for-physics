@@ -192,7 +192,7 @@ class ResBlock(TimestepBlock):
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
-            h = h + emb_out.permute(0, 2, 1)
+            h = h + emb_out
             h = self.out_layers(h)
         return self.skip_connection(x) + h
 
@@ -478,7 +478,7 @@ class UNetModel(nn.Module):
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         if self.condition_dims is not None:
-            y_emb = self.label_emb(y).unsqueeze(dim=1)
+            y_emb = self.label_emb(y)
             emb = emb + y_emb
 
         h = x.type(self.inner_dtype)

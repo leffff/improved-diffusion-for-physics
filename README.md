@@ -4,6 +4,8 @@
 import torch
 
 from improved_diffusion.unet import UNetModel
+from improved_diffusion.losses import ODEFlowMatchingLoss
+from improved_diffusion.functional import ode_euler_integration
 
 model = UNetModel(
     in_channels=198, # should be equal to num_features (input features) 
@@ -15,16 +17,14 @@ model = UNetModel(
     attention_resolutions=("16",) # idk
 )
 
-x = torch.rand(1, 64, 198) # our input [batch_size, num_atoms, num_features],
+x_0 = torch.rand(23, 64, 198) # our input [batch_size, num_atoms, num_features]
 #num_atoms should be a 2 to some power
-t = torch.rand(1) # our time [batch_size]
-y = torch.rand(1, 1) # features to condition on [batch_size, num_condition_features]
+t = torch.rand(23) # our time [batch_size]
+y = torch.rand(23, 1) # features to condition on [batch_size, num_condition_features]
 
-out = model(
-    x=x, 
+model(
+    x=x_0, 
     timesteps=t, 
     y=y
-)
-
-out.shape # torch.Size([1, 64, 198]), which matches x.shape torch.Size([1, 64, 198])
+).shape # torch.Size([23, 64, 198]), which matches x.shape torch.Size([23, 64, 198])
 ```
