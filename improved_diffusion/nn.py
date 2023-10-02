@@ -138,8 +138,8 @@ def checkpoint(func, inputs, params, flag):
     else:
         return func(*inputs)
 
-def gaussian_rbf(energy, n_rbf, cutoff = 5.):
-  radial_basis = spk.nn.GaussianRBF(n_rbf=20, cutoff=cutoff)
+def gaussian_rbf(energy, n_rbf: int = 20, cutoff: float = 5.):
+  radial_basis = spk.nn.GaussianRBF(n_rbf=n_rbf, cutoff=cutoff)
   return radial_basis(energy)
 
 
