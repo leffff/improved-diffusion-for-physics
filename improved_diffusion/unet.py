@@ -496,7 +496,7 @@ class UNetModel(nn.Module):
         return self.out(h).permute(0, 2, 1)
 
 
-    def get_feature_vectors(self, x, timesteps, y=None):
+    def get_feature_vectors(self, x, timesteps=0, y=None):
         """
         Apply the model and return all of the intermediate tensors.
 
