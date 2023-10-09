@@ -472,7 +472,7 @@ class UNetModel(nn.Module):
         x = x.permute(0, 2, 1)
 
         if timesteps is None:
-            timesteps = torch.zeros((x.shape[0]))
+            timesteps = th.zeros((x.shape[0]))
 
         assert (y is not None) == (
             self.condition_dims is not None
@@ -513,7 +513,7 @@ class UNetModel(nn.Module):
                  - 'up': a list of hidden state tensors from upsampling.
         """
         if timesteps is None:
-            timesteps = torch.zeros((x.shape[0]))
+            timesteps = th.zeros((x.shape[0]))
         
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
