@@ -459,7 +459,7 @@ class UNetModel(nn.Module):
         """
         return next(self.input_blocks.parameters()).dtype
 
-    def forward(self, x, timesteps, y=None):
+    def forward(self, x, timesteps=0, y=None):
         """
         Apply the model to an input batch.
 
