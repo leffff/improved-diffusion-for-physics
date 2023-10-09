@@ -459,7 +459,7 @@ class UNetModel(nn.Module):
         """
         return next(self.input_blocks.parameters()).dtype
 
-    def forward(self, x, timesteps=0, y=None):
+    def forward(self, x, timesteps=None, y=None):
         """
         Apply the model to an input batch.
 
@@ -470,6 +470,9 @@ class UNetModel(nn.Module):
         """
 
         x = x.permute(0, 2, 1)
+
+        if timesteps is None:
+            timesteps = torch.zeros((x.shape[0]))
 
         assert (y is not None) == (
             self.condition_dims is not None
@@ -496,7 +499,7 @@ class UNetModel(nn.Module):
         return self.out(h).permute(0, 2, 1)
 
 
-    def get_feature_vectors(self, x, timesteps=0, y=None):
+    def get_feature_vectors(self, x, timesteps=None, y=None):
         """
         Apply the model and return all of the intermediate tensors.
 
@@ -509,6 +512,9 @@ class UNetModel(nn.Module):
                              block in the model.
                  - 'up': a list of hidden state tensors from upsampling.
         """
+        if timesteps is None:
+            timesteps = torch.zeros((x.shape[0]))
+        
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         if self.condition_dims is not None:
