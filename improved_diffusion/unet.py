@@ -561,14 +561,15 @@ class UNetRegressor(nn.Module):
     def __init__(
             self,
             in_channels,
-            out_dims,
             model_channels,
+            out_dims,
             num_res_blocks,
             attention_resolutions,
             dropout=0,
             channel_mult=(1, 2, 4, 8),
             conv_resample=True,
             dims=2,
+            condition_dims=1,
             use_checkpoint=False,
             num_heads=1,
             num_heads_upsample=-1,
@@ -581,18 +582,26 @@ class UNetRegressor(nn.Module):
 
         self.in_channels = in_channels
         self.model_channels = model_channels
+        self.out_dims = out_dims
         self.num_res_blocks = num_res_blocks
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
+        self.condition_dims = condition_dims
         self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
         self.num_heads_upsample = num_heads_upsample
 
-        embed_dim = model_channels * 4
+        time_embed_dim = model_channels * 4
+        self.time_embed = nn.Sequential(
+            linear(model_channels, time_embed_dim),
+            SiLU(),
+            linear(time_embed_dim, time_embed_dim),
+        )
 
-        self.emb = nn.Parameter(th.rand((1, embed_dim)))
+        if self.condition_dims is not None:
+            self.label_emb = nn.Linear(self.condition_dims, time_embed_dim)
 
         self.input_blocks = nn.ModuleList(
             [
@@ -609,7 +618,7 @@ class UNetRegressor(nn.Module):
                 layers = [
                     ResBlock(
                         ch,
-                        embed_dim,
+                        time_embed_dim,
                         dropout,
                         out_channels=mult * model_channels,
                         dims=dims,
@@ -636,7 +645,7 @@ class UNetRegressor(nn.Module):
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
                 ch,
-                embed_dim,
+                time_embed_dim,
                 dropout,
                 dims=dims,
                 use_checkpoint=use_checkpoint,
@@ -645,7 +654,7 @@ class UNetRegressor(nn.Module):
             AttentionBlock(ch, use_checkpoint=use_checkpoint, num_heads=num_heads),
             ResBlock(
                 ch,
-                embed_dim,
+                time_embed_dim,
                 dropout,
                 dims=dims,
                 use_checkpoint=use_checkpoint,
@@ -653,8 +662,8 @@ class UNetRegressor(nn.Module):
             ),
         )
 
-        self.flatten = nn.Flatten()
-        self.out = nn.Linear(2048 * 8, out_dims)
+        self.out = nn.Linear(self.model_channels * 8  * 8, self.out_dims)
+
 
     def convert_to_fp16(self):
         """
@@ -679,7 +688,7 @@ class UNetRegressor(nn.Module):
         """
         return next(self.input_blocks.parameters()).dtype
 
-    def forward(self, x):
+    def forward(self, x, timesteps=None, y=None):
         """
         Apply the model to an input batch.
 
@@ -691,10 +700,24 @@ class UNetRegressor(nn.Module):
 
         x = x.permute(0, 2, 1)
 
+        if timesteps is None:
+            timesteps = th.zeros((x.shape[0])).to(x.device)
+
+        assert (y is not None) == (
+                self.condition_dims is not None
+        ), "must specify y if and only if the model is class-conditional"
+
+        hs = []
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+        if self.condition_dims is not None:
+            y_emb = self.label_emb(y)
+            emb = emb + y_emb
+
         h = x.type(self.inner_dtype)
         for module in self.input_blocks:
-            h = module(h, self.emb)
+            h = module(h, emb)
+            hs.append(h)
 
-        h = self.middle_block(h, self.emb)
+        h = self.middle_block(h, emb).flatten(start_dim=1)
 
-        return self.out(self.flatten(h))
+        return self.out(h)
